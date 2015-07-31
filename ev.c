@@ -164,6 +164,8 @@
  
 #endif
 
+#define _BSD_SOURCE
+
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -2493,7 +2495,7 @@ static ev_signal childev;
 
 /* handle a single child status event */
 inline_speed void
-child_reap (EV_P_ int chain, int pid, int status)
+child_reap (EV_P_ int chain, int pid, int status, struct rusage *usage)
 {
   ev_child *w;
   int traced = WIFSTOPPED (status) || WIFCONTINUED (status);
@@ -2506,6 +2508,9 @@ child_reap (EV_P_ int chain, int pid, int status)
           ev_set_priority (w, EV_MAXPRI); /* need to do it *now*, this *must* be the same prio as the signal watcher itself */
           w->rpid    = pid;
           w->rstatus = status;
+		  if (usage != NULL) {
+			  memcpy(&w->rusage, usage, sizeof(struct rusage));
+		  }
           ev_feed_event (EV_A_ (W)w, EV_CHILD);
         }
     }
@@ -2522,19 +2527,29 @@ childcb (EV_P_ ev_signal *sw, int revents)
   int pid, status;
 
   /* some systems define WCONTINUED but then fail to support it (linux 2.4) */
-  if (0 >= (pid = waitpid (-1, &status, WNOHANG | WUNTRACED | WCONTINUED)))
+  if (0 >= (pid = waitpid (-1, &status, WNOHANG | WUNTRACED | WCONTINUED | WNOWAIT)))
     if (!WCONTINUED
         || errno != EINVAL
-        || 0 >= (pid = waitpid (-1, &status, WNOHANG | WUNTRACED)))
+        || 0 >= (pid = waitpid (-1, &status, WNOHANG | WUNTRACED | WNOWAIT)))
       return;
+
+  struct rusage *usage = ev_malloc(sizeof(struct rusage));
+  if (0 >= (wait4(pid, &status, WNOHANG | WUNTRACED | WCONTINUED | WNOWAIT, usage)))
+    if (!WCONTINUED
+        || errno != EINVAL
+        || 0 >= (pid = wait4 (-1, &status, WNOHANG | WUNTRACED | WNOWAIT, usage))) {
+			ev_free(usage);
+			return;
+		}
 
   /* make sure we are called again until all children have been reaped */
   /* we need to do it this way so that the callback gets called before we continue */
   ev_feed_event (EV_A_ (W)sw, EV_SIGNAL);
 
-  child_reap (EV_A_ pid, pid, status);
+  child_reap (EV_A_ pid, pid, status, usage);
   if ((EV_PID_HASHSIZE) > 1)
-    child_reap (EV_A_ 0, pid, status); /* this might trigger a watcher twice, but feed_event catches that */
+    child_reap (EV_A_ 0, pid, status, usage); /* this might trigger a watcher twice, but feed_event catches that */
+  ev_free(usage);
 }
 
 #endif

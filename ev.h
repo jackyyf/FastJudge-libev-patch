@@ -167,6 +167,13 @@ typedef double ev_tstamp;
 # include <sys/stat.h>
 #endif
 
+#if EV_CHILD_ENABLE
+# include <sys/types.h>
+# include <sys/time.h>
+# include <sys/resource.h>
+# include <sys/wait.h>
+#endif
+
 /* support multiple event loops? */
 #if EV_MULTIPLICITY
 struct ev_loop;
@@ -362,6 +369,8 @@ typedef struct ev_child
   int pid;     /* ro */
   int rpid;    /* rw, holds the received pid */
   int rstatus; /* rw, holds the exit status, use the macros from sys/wait.h */
+
+  struct rusage rusage; /* rw, holds the runtime resource usage information */
 } ev_child;
 
 #if EV_STAT_ENABLE
